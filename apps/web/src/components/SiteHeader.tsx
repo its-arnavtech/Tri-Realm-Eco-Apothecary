@@ -6,12 +6,10 @@ export function SiteHeader() {
       <Link href="/" className="brand" aria-label="brew67potions home"><span className="brand__symbol">✦</span><span>brew<span className="brand__number">67</span>potions</span></Link>
       <nav className="main-nav" aria-label="Main navigation">
         <Link href="/realms">The realms</Link>
-        <Link href="/catalog">The brews</Link>
-        <Link href="/configure">Find your brew</Link>
+        <Link href="/catalog">Concept gallery</Link>
         <Link href="/about">Our approach</Link>
-        <Link href="/account">Account</Link>
       </nav>
-      <Link href="/cart" className="cart-link" aria-label="View cart">Cart <span aria-hidden="true">↗</span></Link>
+      <Link href="/catalog" className="header-cta">Explore the ideas <span aria-hidden="true">↗</span></Link>
     </div>
   </header>;
 }

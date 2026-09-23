@@ -3,10 +3,10 @@ import Link from "next/link";
 export function SiteFooter() {
   return <footer className="site-footer">
     <div className="shell site-footer__grid">
-      <div><div className="footer-brand">✦ brew67potions</div><p>Three realms. One thoughtful way to explore what comes next.</p></div>
-      <div><h2>Explore</h2><Link href="/realms">The realms</Link><Link href="/catalog">The brews</Link><Link href="/configure">The configurator</Link></div>
-      <div><h2>Information</h2><Link href="/about">Our approach</Link><Link href="/privacy">Privacy & consent</Link><Link href="/cart">Your cart</Link></div>
+      <div><div className="footer-brand">✦ brew67potions</div><p>An exploration of care, place, and possibility. Inspired by Forest, Ocean, and Mountain.</p></div>
+      <div><h2>Explore</h2><Link href="/realms">The realms</Link><Link href="/catalog">Concept gallery</Link><Link href="/about">Our approach</Link></div>
+      <div><h2>Information</h2><Link href="/privacy">Privacy</Link><p>Every brew shown here is a concept. Nothing is offered for sale.</p></div>
     </div>
-    <div className="shell site-footer__bottom"><span>© 2026 brew67potions</span><span>Product availability and reviewed details appear on each brew page.</span></div>
+    <div className="shell site-footer__bottom"><span>© 2026 brew67potions</span><span>Imagery and concepts are illustrative.</span></div>
   </footer>;
 }
