@@ -1,0 +1,18 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: brew67
+      POSTGRES_USER: brew
+      POSTGRES_PASSWORD: brew
+    ports:
+      - "5432:5432"
+    volumes:
+      - brew67_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U brew -d brew67"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  brew67_db:
