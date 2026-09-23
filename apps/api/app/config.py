@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 LOCAL_DATABASE_URL = (
@@ -39,6 +40,16 @@ class Settings(BaseSettings):
     support_email: str = ""
     terms_url: str = ""
     refund_policy_url: str = ""
+
+    @field_validator("database_url")
+    @classmethod
+    def use_psycopg_for_managed_postgres(cls, value: str) -> str:
+        # Managed hosts usually provide a plain PostgreSQL URL. This API ships psycopg 3.
+        if value.startswith("postgres://"):
+            return value.replace("postgres://", "postgresql+psycopg://", 1)
+        if value.startswith("postgresql://"):
+            return value.replace("postgresql://", "postgresql+psycopg://", 1)
+        return value
 
 
 settings = Settings()

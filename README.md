@@ -4,6 +4,7 @@ A biome-led product experience and release-gated commerce platform. Forest, Ocea
 
 The source requirements are in `brew67potions_POC_PDD.docx` and `.pdf`. Implementation choices and release gates are recorded in `docs/`.
 Local performance and accessibility measurements, plus remaining launch validation, are recorded in [quality evidence](docs/quality-evidence.md).
+For public hosting, see [Vercel deployment and domain setup](docs/deployment-vercel.md).
 
 ## Local development
 
