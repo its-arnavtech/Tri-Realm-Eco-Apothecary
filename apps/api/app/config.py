@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     admin_api_key: str = ""
     environment: str = "production"
     commerce_enabled: bool = False
+    local_test_commerce: bool = False
     consent_policy_version: str = "2026-09-poc"
     intent_retention_days: int = 90
     analytics_retention_days: int = 30

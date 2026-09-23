@@ -128,6 +128,9 @@ def purge_account_tokens() -> int:
                 cm.EmailOutbox.status.in_(["sent", "failed"]),
             )
         ).rowcount
+        count += db.execute(
+            delete(cm.RateLimitBucket).where(cm.RateLimitBucket.expires_at < datetime.now(UTC))
+        ).rowcount
         db.commit()
     return count
 

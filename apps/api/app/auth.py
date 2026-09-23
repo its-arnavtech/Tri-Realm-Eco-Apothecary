@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, joinedload
 from app import commerce_models as cm
 from app.config import settings
 from app.db import get_db
+from app.rate_limit import limited
 
 router = APIRouter(prefix="/api/v1/auth", tags=["accounts"])
 hasher = PasswordHasher()
@@ -182,7 +183,9 @@ def require_role(*roles: str):
     return check
 
 
-@router.post("/register", response_model=CustomerOut, status_code=201)
+@router.post(
+    "/register", response_model=CustomerOut, status_code=201, dependencies=[Depends(limited)]
+)
 def register(
     payload: RegisterIn,
     request: Request,
@@ -216,7 +219,7 @@ def register(
     return customer_out(customer)
 
 
-@router.post("/login", response_model=CustomerOut)
+@router.post("/login", response_model=CustomerOut, dependencies=[Depends(limited)])
 def login(
     payload: LoginIn, request: Request, response: Response, db: Annotated[Session, Depends(get_db)]
 ):
@@ -272,7 +275,7 @@ def save_preferences(
     return customer_out(customer)
 
 
-@router.post("/verify-email")
+@router.post("/verify-email", dependencies=[Depends(limited)])
 def verify_email(payload: TokenIn, db: Annotated[Session, Depends(get_db)]):
     verification = db.scalar(
         select(cm.EmailVerification).where(cm.EmailVerification.token_hash == digest(payload.token))
@@ -322,7 +325,7 @@ def resend_verification(customer: CsrfCustomer, db: Annotated[Session, Depends(g
     return {"sent": True}
 
 
-@router.post("/password-reset/request")
+@router.post("/password-reset/request", dependencies=[Depends(limited)])
 def request_reset(payload: EmailIn, request: Request, db: Annotated[Session, Depends(get_db)]):
     enforce_origin(request)
     customer = db.scalar(select(cm.Customer).where(cm.Customer.email == str(payload.email).lower()))
@@ -355,7 +358,7 @@ def request_reset(payload: EmailIn, request: Request, db: Annotated[Session, Dep
     return {"message": "If this account exists, recovery instructions will be sent."}
 
 
-@router.post("/password-reset/confirm")
+@router.post("/password-reset/confirm", dependencies=[Depends(limited)])
 def confirm_reset(payload: ResetIn, request: Request, db: Annotated[Session, Depends(get_db)]):
     enforce_origin(request)
     reset = db.scalar(

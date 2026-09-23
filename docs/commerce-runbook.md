@@ -4,7 +4,11 @@
 
 `compose.full.yaml` is a local integration stack. A production deployment needs a managed PostgreSQL database with encrypted backups, HTTPS at the web edge, private API connectivity, a secret manager, an SMTP service, a one-minute job scheduler, monitoring, and an operator on call. Build the API and web images from their Dockerfiles. Build the web image with `API_INTERNAL_URL` set to the private API origin because Next.js rewrites are compiled into its build. Run Alembic migrations before rolling API instances. Roll back the application version if a migration or health probe fails; treat data migrations as forward-only and restore from a verified backup for destructive recovery.
 
+Local Stripe test-mode checkout requires `COMMERCE_ENABLED=true`, `LOCAL_TEST_COMMERCE=true`, a `sk_test_` API key, webhook signing secret, and test shipping rate. Production ignores `LOCAL_TEST_COMMERCE` and requires the full launch configuration below.
+
 The web process exposes port 3000. The API exposes port 8000 with `/health/live` and `/health/ready`. The worker runs `python -m app.jobs` every minute. Run `python -m app.retention` daily. Alert on nonzero job exits, failed outbox rows, old `pending_payment` orders, `paid_stock_hold` orders, webhook 4xx/5xx spikes, low stock, database errors, and API readiness failure.
+
+The API emits JSON request records with route template, status, latency, and a response `X-Request-ID`. Its container disables Uvicorn's raw URL access log so query strings are not copied into request telemetry. `/api/v1/admin/metrics` provides a seven-day funnel and current stock/email/payment snapshot to authenticated staff. Collect these logs and poll the metrics and readiness endpoints from the chosen monitoring service; external alert routing remains a deployment prerequisite.
 
 ## First operator and access
 

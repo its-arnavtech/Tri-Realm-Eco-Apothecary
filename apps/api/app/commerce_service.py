@@ -30,7 +30,12 @@ def commerce_ready() -> bool:
         and settings.web_origin.startswith("http://localhost")
         and settings.public_web_url.startswith("http://localhost")
     ):
-        return True
+        return bool(
+            settings.local_test_commerce
+            and settings.stripe_secret_key.startswith("sk_test_")
+            and settings.stripe_webhook_secret
+            and settings.stripe_shipping_rate_id
+        )
     return bool(
         settings.launch_approval_reference
         and settings.support_email

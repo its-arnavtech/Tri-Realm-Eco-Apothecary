@@ -17,6 +17,7 @@ from app import commerce_models as cm
 from app import commerce_service as service
 from app.config import settings
 from app.db import get_db
+from app.rate_limit import limited
 from app.services import get_cart
 
 router = APIRouter(prefix="/api/v1", tags=["commerce"])
@@ -305,7 +306,7 @@ def fulfill_subscription_invoice(db: Session, invoice: dict) -> str | None:
     return order.id
 
 
-@router.post("/checkout/session")
+@router.post("/checkout/session", dependencies=[Depends(limited)])
 def checkout(request: Request, db: Db, payload: CheckoutIn | None = None):
     if not service.commerce_ready():
         raise HTTPException(
@@ -640,11 +641,74 @@ def product_impact(product_id: str, db: Db):
             "methodology_version": item.methodology_version,
             "source_reference": item.source_reference,
             "qualification": item.qualification,
+            "basis": "per product unit",
+            "estimate_kind": "modeled estimate",
         }
         for item in factors
         if (not item.valid_from or auth.utc(item.valid_from) <= now)
         and (not item.valid_to or auth.utc(item.valid_to) >= now)
     ]
+
+
+@router.get("/account/impact")
+def account_impact(customer: auth.CustomerDep, db: Db):
+    """Estimate purchased-unit impact only for delivered, non-refunded orders."""
+    orders = db.scalars(
+        select(cm.Order)
+        .options(selectinload(cm.Order.items))
+        .where(
+            cm.Order.customer_id == customer.id,
+            cm.Order.fulfillment_status == "delivered",
+            cm.Order.payment_status == "paid",
+        )
+    ).all()
+    if not orders:
+        return []
+    product_ids = {item.product_id for order in orders for item in order.items}
+    factors = db.scalars(
+        select(cm.ImpactFactor).where(
+            cm.ImpactFactor.product_id.in_(product_ids),
+            cm.ImpactFactor.status == "approved",
+        )
+    ).all()
+    products = {
+        product.id: product
+        for product in db.scalars(
+            select(models.Product).where(models.Product.id.in_(product_ids))
+        ).all()
+    }
+    rows = []
+    for factor in factors:
+        units = sum(
+            item.quantity
+            for order in orders
+            if order.fulfilled_at
+            and (
+                not factor.valid_from or auth.utc(factor.valid_from) <= auth.utc(order.fulfilled_at)
+            )
+            and (not factor.valid_to or auth.utc(factor.valid_to) >= auth.utc(order.fulfilled_at))
+            for item in order.items
+            if item.product_id == factor.product_id
+        )
+        if not units:
+            continue
+        rows.append(
+            {
+                "product_id": factor.product_id,
+                "product_name": products[factor.product_id].name,
+                "metric_type": factor.metric_type,
+                "estimate_kind": "modeled estimate",
+                "estimated_value": str(factor.factor_value * Decimal(units)),
+                "unit": factor.unit,
+                "units_counted": units,
+                "baseline": factor.baseline,
+                "comparison_scenario": factor.comparison_scenario,
+                "methodology_version": factor.methodology_version,
+                "source_reference": factor.source_reference,
+                "qualification": factor.qualification,
+            }
+        )
+    return rows
 
 
 @router.get("/account/subscriptions")
@@ -672,7 +736,7 @@ def capabilities():
     }
 
 
-@router.post("/account/subscriptions/{product_id}/checkout")
+@router.post("/account/subscriptions/{product_id}/checkout", dependencies=[Depends(limited)])
 def subscription_checkout(product_id: str, customer: auth.CsrfCustomer, db: Db):
     if not service.commerce_ready() or not settings.subscriptions_enabled:
         raise HTTPException(409, "Subscriptions are disabled")
@@ -860,6 +924,7 @@ def admin_products(_staff: Staff, db: Db):
                 "id": product.id,
                 "name": product.name,
                 "slug": product.slug,
+                "active": product.active,
                 "availability_status": product.availability_status,
                 "release_errors": service.release_errors(db, product, require_published=False),
                 "inventory": {
@@ -882,6 +947,70 @@ def admin_products(_staff: Staff, db: Db):
             }
         )
     return rows
+
+
+@router.get("/admin/metrics")
+def admin_metrics(_staff: Staff, db: Db):
+    """Small, PII-free operational and funnel dashboard snapshot."""
+    cutoff = datetime.now(UTC) - timedelta(days=7)
+    funnel = dict(
+        db.execute(
+            select(models.AnalyticsEvent.event_name, func.count())
+            .where(models.AnalyticsEvent.occurred_at >= cutoff)
+            .group_by(models.AnalyticsEvent.event_name)
+        ).all()
+    )
+    orders = dict(
+        db.execute(
+            select(cm.Order.status, func.count())
+            .where(cm.Order.created_at >= cutoff)
+            .group_by(cm.Order.status)
+        ).all()
+    )
+    low_stock = (
+        db.scalar(
+            select(func.count())
+            .select_from(cm.InventoryItem)
+            .where(
+                cm.InventoryItem.on_hand - cm.InventoryItem.reserved
+                <= cm.InventoryItem.low_stock_threshold
+            )
+        )
+        or 0
+    )
+    failed_email = (
+        db.scalar(
+            select(func.count())
+            .select_from(cm.EmailOutbox)
+            .where(cm.EmailOutbox.status == "failed")
+        )
+        or 0
+    )
+    pending_email = (
+        db.scalar(
+            select(func.count())
+            .select_from(cm.EmailOutbox)
+            .where(cm.EmailOutbox.status == "pending")
+        )
+        or 0
+    )
+    webhook_events = (
+        db.scalar(
+            select(func.count())
+            .select_from(cm.PaymentEvent)
+            .where(cm.PaymentEvent.processed_at >= cutoff)
+        )
+        or 0
+    )
+    return {
+        "window_days": 7,
+        "funnel_events": funnel,
+        "orders_by_status": orders,
+        "low_stock_skus": low_stock,
+        "failed_email": failed_email,
+        "pending_email": pending_email,
+        "processed_payment_events": webhook_events,
+    }
 
 
 @router.patch("/admin/staff/role")
@@ -1226,6 +1355,8 @@ def review_impact(impact_id: str, payload: ApprovalIn, actor: Operator, db: Db):
     record.status = payload.status
     record.reviewer = actor.email
     record.reviewed_at = datetime.now(UTC)
+    if payload.status == "approved" and record.valid_from is None:
+        record.valid_from = record.reviewed_at
     audit(
         db,
         actor,

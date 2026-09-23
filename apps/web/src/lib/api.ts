@@ -13,7 +13,7 @@ export const getProducts = (query = "") => get<ProductPage>(`/products${query}`)
 export const getProductTypes = () => get<string[]>("/products/facets");
 export type ImpactFactor = { metric_type: string; factor_value: string; unit: string;
   baseline: string; comparison_scenario: string; methodology_version: string;
-  source_reference: string; qualification: string };
+  source_reference: string; qualification: string; basis: string; estimate_kind: string };
 export const getImpact = (productId: string) => get<ImpactFactor[]>(`/products/${productId}/impact`);
 export async function getProduct(slug: string): Promise<Product | null> {
   const response = await fetch(`${base}/api/v1/products/${encodeURIComponent(slug)}`, { cache: "no-store" });

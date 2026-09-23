@@ -144,6 +144,7 @@ class AnalyticsEventIn(BaseModel):
 
 
 class ProductAdminPatch(BaseModel):
+    active: bool | None = None
     name: str | None = Field(default=None, min_length=2, max_length=160)
     subtitle: str | None = Field(default=None, min_length=2, max_length=200)
     description: str | None = Field(default=None, min_length=10)
@@ -160,6 +161,13 @@ class ProductAdminPatch(BaseModel):
     storage_instructions: str | None = None
     packaging: str | None = None
     shipping_details: str | None = None
+
+
+class ProductCreate(BaseModel):
+    brew_number: int = Field(ge=1, le=999999)
+    slug: str = Field(min_length=3, max_length=100, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+    name: str = Field(min_length=2, max_length=160)
+    biome_slug: str = Field(min_length=2, max_length=32)
 
 
 class FormulationCreate(BaseModel):

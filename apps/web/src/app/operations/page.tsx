@@ -6,7 +6,7 @@ import { money } from "@/lib/api";
 import { request } from "@/lib/client";
 import type { Product as PublicProduct } from "@/lib/types";
 
-type Product = { id: string; name: string; slug: string; availability_status: string;
+type Product = { id: string; name: string; slug: string; active: boolean; availability_status: string;
   release_errors: string[]; inventory: { sku: string; on_hand: number; reserved: number; available: number } | null;
   approvals: { gate: string; status: string; evidence_reference: string | null }[] };
 type Order = { id: string; customer_id: string; status: string; payment_status: string;
@@ -18,12 +18,16 @@ type Evidence = { formulations: { id: string; version_label: string; status: str
   status: string; source_reference: string }[] };
 type PrivacyRequest = { id: string; customer_id: string; type: string; status: string;
   provider_customer_id: string | null; created_at: string };
+type Metrics = { window_days: number; funnel_events: Record<string, number>;
+  orders_by_status: Record<string, number>; low_stock_skus: number;
+  failed_email: number; pending_email: number; processed_payment_events: number };
 const gates = ["formulation", "safety", "label", "claims", "shipping", "tax", "fulfillment", "support"];
 
 export default function OperationsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [privacyRequests, setPrivacyRequests] = useState<PrivacyRequest[]>([]);
+  const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [selected, setSelected] = useState("");
   const [evidence, setEvidence] = useState<Evidence | null>(null);
   const [gate, setGate] = useState(gates[0]);
@@ -53,6 +57,10 @@ export default function OperationsPage() {
   const [impactMethod, setImpactMethod] = useState("");
   const [impactQualification, setImpactQualification] = useState("");
   const [refundAmount, setRefundAmount] = useState("");
+  const [newBrewNumber, setNewBrewNumber] = useState("");
+  const [newSlug, setNewSlug] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newBiome, setNewBiome] = useState("forest");
 
   const load = useCallback(async () => {
     try {
@@ -60,11 +68,13 @@ export default function OperationsPage() {
       if (!["admin", "operations", "support"].includes(user.role)) return;
       setAllowed(true); setCanEdit(user.role !== "support");
       setIsAdmin(user.role === "admin");
-      const [productList, orderList, privacyList] = await Promise.all([
+      const [productList, orderList, privacyList, metricsSnapshot] = await Promise.all([
         request<Product[]>("/admin/products"), request<Order[]>("/admin/orders"),
         user.role === "admin" ? request<PrivacyRequest[]>("/admin/privacy-requests") : Promise.resolve([]),
+        request<Metrics>("/admin/metrics"),
       ]);
       setProducts(productList); setOrders(orderList); setPrivacyRequests(privacyList);
+      setMetrics(metricsSnapshot);
       setSelected((current) => current || productList[0]?.id || "");
       setSku(productList.find((item) => item.id === selected)?.inventory?.sku ?? productList[0]?.inventory?.sku ?? "");
     } catch { setAllowed(false); }
@@ -73,8 +83,7 @@ export default function OperationsPage() {
   useEffect(() => {
     if (!selected) return;
     void request<Evidence>(`/admin/products/${selected}/evidence`).then(setEvidence).catch(() => setEvidence(null));
-    const item = products.find((row) => row.id === selected);
-    if (item) void request<PublicProduct>(`/products/${item.slug}`).then((publicProduct) => setDraft({
+    if (products.some((row) => row.id === selected)) void request<PublicProduct>(`/admin/products/${selected}`).then((publicProduct) => setDraft({
       name: publicProduct.name, subtitle: publicProduct.subtitle,
       description: publicProduct.description, product_type: publicProduct.product_type,
       form_factor: publicProduct.form_factor, unit_size: publicProduct.unit_size,
@@ -115,6 +124,31 @@ export default function OperationsPage() {
       method: "PATCH", headers: { "X-Reason": reason || "Product publication review" },
       body: JSON.stringify({ availability_status: status }),
     }), status === "available" ? "Product published." : "Product returned to concept status.");
+  }
+
+  async function setVisibility(active: boolean) {
+    if (!product) return;
+    await action(() => request(`/admin/products/${product.id}`, {
+      method: "PATCH", headers: { "X-Reason": reason || "Product visibility review" },
+      body: JSON.stringify({ active, ...(active ? {} : { availability_status: "concept" }) }),
+    }), active ? "Concept is visible in the catalog." : "Product hidden from the catalog.");
+  }
+
+  async function createDraft(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const created = await request<PublicProduct>("/admin/products", {
+        method: "POST", headers: { "X-Reason": reason || "New product concept draft" },
+        body: JSON.stringify({ brew_number: Number(newBrewNumber), slug: newSlug,
+          name: newName, biome_slug: newBiome }),
+      });
+      setNewBrewNumber(""); setNewSlug(""); setNewName("");
+      setSelected(created.id);
+      setMessage("Private concept draft created. Complete the record before showing it in the catalog.");
+      await load();
+    } catch (err) { setError(err instanceof Error ? err.message : "Could not create draft."); }
+    finally { setBusy(false); }
   }
 
   async function review(kind: "formulations" | "claims" | "impact", id: string) {
@@ -205,10 +239,28 @@ export default function OperationsPage() {
       : <><p className="operations-note">Review each evidence reference against its source before approving a gate. Concepts remain unavailable for sale until all release gates pass.</p>
         {error && <p className="alert" role="alert">{error}</p>}
         {message && <p className="success" role="status">{message}</p>}
-        <div className="operations-grid"><section className="operations-panel"><h2>Products and release</h2>
+        <div className="operations-grid">{metrics && <section className="operations-panel operations-panel--wide"><h2>Operational pulse</h2>
+          <p>Last {metrics.window_days} days · {metrics.processed_payment_events} verified payment events</p>
+          <p>{metrics.low_stock_skus} low stock SKUs · {metrics.pending_email} pending emails · {metrics.failed_email} failed emails</p>
+          <h3>Funnel events</h3><ul className="account-list">{Object.entries(metrics.funnel_events).map(([name, count]) =>
+            <li key={name}>{name.replaceAll("_", " ")}: {count}</li>)}</ul>
+          <h3>Orders by status</h3><ul className="account-list">{Object.entries(metrics.orders_by_status).map(([name, count]) =>
+            <li key={name}>{name.replaceAll("_", " ")}: {count}</li>)}</ul>
+        </section>}
+        {canEdit && <section className="operations-panel"><h2>Create product draft</h2>
+          <p>A new product stays private and cannot be sold until its record and release evidence are approved.</p>
+          <form onSubmit={createDraft}>
+            <div className="field"><label htmlFor="new-brew-number">Brew number</label><input id="new-brew-number" type="number" min={1} required value={newBrewNumber} onChange={(event) => setNewBrewNumber(event.target.value)} /></div>
+            <div className="field"><label htmlFor="new-slug">URL slug</label><input id="new-slug" required pattern="[a-z0-9]+(-[a-z0-9]+)*" value={newSlug} onChange={(event) => setNewSlug(event.target.value)} /></div>
+            <div className="field"><label htmlFor="new-name">Name</label><input id="new-name" required minLength={2} value={newName} onChange={(event) => setNewName(event.target.value)} /></div>
+            <div className="field"><label htmlFor="new-biome">Biome</label><select id="new-biome" value={newBiome} onChange={(event) => setNewBiome(event.target.value)}><option value="forest">Forest</option><option value="ocean">Ocean</option><option value="mountain">Mountain</option></select></div>
+            <button className="button button--outline" disabled={busy}>Create private draft →</button>
+          </form>
+        </section>}
+        <section className="operations-panel"><h2>Products and release</h2>
           <div className="field"><label htmlFor="ops-product">Product</label><select id="ops-product" value={selected} onChange={(event) => { setSelected(event.target.value); setSku(products.find((item) => item.id === event.target.value)?.inventory?.sku ?? ""); }}>
-            {products.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.availability_status}</option>)}</select></div>
-          {product && <><p>Status: <strong>{product.availability_status}</strong></p>
+            {products.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.active ? item.availability_status : "private draft"}</option>)}</select></div>
+          {product && <><p>Status: <strong>{product.active ? product.availability_status : "private draft"}</strong></p>
             {product.release_errors.length ? <ul>{product.release_errors.map((item) => <li key={item}>{item}</li>)}</ul>
               : <p className="success">All recorded release checks pass.</p>}
             <p>Stock: {product.inventory ? `${product.inventory.available} available (${product.inventory.reserved} reserved)` : "No inventory record"}</p>
@@ -218,6 +270,8 @@ export default function OperationsPage() {
               <div className="field"><label htmlFor="reference">Evidence reference</label><input id="reference" required minLength={8} value={reference} onChange={(event) => setReference(event.target.value)} /></div>
               <div className="field"><label htmlFor="reason">Review reason</label><textarea id="reason" required minLength={5} value={reason} onChange={(event) => setReason(event.target.value)} /></div>
               <button className="button button--outline" disabled={busy}>Approve gate</button></form>
+              {!product.active && <button className="button button--outline" disabled={busy} onClick={() => setVisibility(true)}>Show concept in catalog</button>}
+              {product.active && <button className="button button--outline" disabled={busy} onClick={() => setVisibility(false)}>Hide product</button>}
               <button className="button button--gold" disabled={busy || product.release_errors.length > 0} onClick={() => publish("available")}>Publish product →</button>
               <button className="button button--outline" disabled={busy} onClick={() => publish("concept")}>Return to concept</button></>}
           </>}
@@ -268,7 +322,7 @@ export default function OperationsPage() {
             <form onSubmit={addImpact}><h3>New impact factor draft</h3>
               {[
                 ["impact-metric", "Metric", impactMetric, setImpactMetric],
-                ["impact-value", "Factor value", impactValue, setImpactValue],
+                ["impact-value", "Factor value per product unit", impactValue, setImpactValue],
                 ["impact-unit", "Unit", impactUnit, setImpactUnit],
                 ["impact-baseline", "Baseline", impactBaseline, setImpactBaseline],
                 ["impact-comparison", "Comparison scenario", impactComparison, setImpactComparison],

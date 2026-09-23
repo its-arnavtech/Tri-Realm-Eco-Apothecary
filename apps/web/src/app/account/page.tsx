@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { track } from "@/components/Analytics";
 import { money } from "@/lib/api";
 import { request } from "@/lib/client";
+import type { Product, ProductPage } from "@/lib/types";
 
 type Customer = { id: string; email: string; role: string; email_verified: boolean;
   preferences: { preferred_biome?: string } };
@@ -13,6 +15,10 @@ type Order = { id: string; status: string; payment_status: string; fulfillment_s
 type Subscription = { id: string; product_id: string; status: string;
   current_period_end: string | null; cancel_at_period_end: boolean };
 type PrivacyRequest = { id: string; type: string; status: string; created_at: string };
+type ImpactEstimate = { product_id: string; product_name: string; metric_type: string;
+  estimated_value: string; unit: string; units_counted: number; baseline: string;
+  comparison_scenario: string; methodology_version: string; source_reference: string;
+  qualification: string; estimate_kind: string };
 
 export default function AccountPage() {
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -23,6 +29,8 @@ export default function AccountPage() {
   const [biome, setBiome] = useState("");
   const [orders, setOrders] = useState<Order[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [refills, setRefills] = useState<Product[]>([]);
+  const [impact, setImpact] = useState<ImpactEstimate[]>([]);
   const [privacyRequests, setPrivacyRequests] = useState<PrivacyRequest[]>([]);
   const [deletionPassword, setDeletionPassword] = useState("");
   const [error, setError] = useState("");
@@ -34,11 +42,14 @@ export default function AccountPage() {
       const user = await request<Customer>("/auth/me");
       setCustomer(user);
       setBiome(user.preferences.preferred_biome ?? "");
-      const [orderList, subscriptionList, privacyList] = await Promise.all([
+      const [orderList, subscriptionList, privacyList, refillList, impactList] = await Promise.all([
         request<Order[]>("/account/orders"), request<Subscription[]>("/account/subscriptions"),
         request<PrivacyRequest[]>("/account/privacy-requests"),
+        request<ProductPage>("/products?refillable=true&availability=available&page_size=48"),
+        request<ImpactEstimate[]>("/account/impact"),
       ]);
       setOrders(orderList); setSubscriptions(subscriptionList); setPrivacyRequests(privacyList);
+      setRefills(refillList.items); setImpact(impactList);
     } catch { setCustomer(null); }
     finally { setLoading(false); }
   }, []);
@@ -66,7 +77,7 @@ export default function AccountPage() {
 
   async function signOut() {
     setBusy(true); setError("");
-    try { await request("/auth/logout", { method: "POST" }); setCustomer(null); setOrders([]); setSubscriptions([]); }
+    try { await request("/auth/logout", { method: "POST" }); setCustomer(null); setOrders([]); setSubscriptions([]); setRefills([]); setImpact([]); }
     catch (err) { setError(err instanceof Error ? err.message : "Could not sign out."); }
     finally { setBusy(false); }
   }
@@ -140,12 +151,26 @@ export default function AccountPage() {
           </li>)}</ul>}
       </section>
       <section className="account-panel"><h2>Refills and subscriptions</h2>
-        {subscriptions.length === 0 ? <p>No subscriptions yet. Refills appear here once approved and available.</p>
+        {refills.length ? <><p>Currently available refill-compatible brews:</p><ul className="account-list">{refills.map((product) =>
+          <li key={product.id}><Link className="text-link" href={`/catalog/${product.slug}`}
+            onClick={() => track("refill_viewed", { page: "account", product_slug: product.slug })}>{product.name} →</Link></li>)}</ul></>
+          : <p>No approved refill-compatible brews are available yet.</p>}
+        <p><Link className="text-link" href="/catalog?refillable=true&availability=available">Browse all available refills →</Link></p>
+        {subscriptions.length === 0 ? <p>No subscriptions yet.</p>
           : <ul className="account-list">{subscriptions.map((item) => <li key={item.id}>
             <strong>Subscription {item.id.slice(0, 8)}</strong><p>Status: {item.status}</p>
             {item.current_period_end && <p>Current period ends {new Date(item.current_period_end).toLocaleDateString()}</p>}
           </li>)}</ul>}
         {subscriptions.length > 0 && <button className="button button--outline" disabled={busy} onClick={billingPortal}>Manage billing →</button>}
+      </section>
+      <section className="account-panel"><h2>Your impact estimates</h2>
+        <p>We show modeled estimates only for delivered, non-refunded purchases with a reviewed per-unit method.</p>
+        {impact.length ? <ul className="account-list">{impact.map((item) => <li key={`${item.product_id}-${item.metric_type}-${item.methodology_version}`}>
+          <strong>{item.product_name}: {item.estimated_value} {item.unit}</strong>
+          <p>{item.metric_type} · {item.estimate_kind} across {item.units_counted} unit{item.units_counted === 1 ? "" : "s"}</p>
+          <p>Baseline: {item.baseline}. Compared with: {item.comparison_scenario}.</p>
+          <p>{item.qualification} · Method {item.methodology_version} · Source: {item.source_reference}</p>
+        </li>)}</ul> : <p>No reviewed estimate applies to your delivered purchases yet.</p>}
       </section>
       <section className="account-panel"><h2>Your data</h2>
         <p>Download a copy of your account, order, interest, and subscription records.</p>

@@ -1,17 +1,20 @@
+import json
+import logging
 import re
 import secrets
-from collections import defaultdict, deque
-from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from time import perf_counter
+from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app import auth, commerce, commerce_service, models
 from app.config import settings
 from app.db import get_db
+from app.rate_limit import limited
 from app.schemas import (
     EVENT_CONTEXT_KEYS,
     EVENT_NAMES,
@@ -27,6 +30,7 @@ from app.schemas import (
     IntentSignupIn,
     IntentSignupOut,
     ProductAdminPatch,
+    ProductCreate,
     ProductOut,
     ProductPage,
     RecommendationInput,
@@ -35,6 +39,13 @@ from app.schemas import (
 from app.services import cart_view, create_cart, evaluate_recommendation, get_cart, public_product
 
 app = FastAPI(title="brew67potions API", version="0.1.0")
+request_logger = logging.getLogger("brew67.requests")
+if not request_logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    request_logger.addHandler(handler)
+request_logger.setLevel(logging.INFO)
+request_logger.propagate = False
 app.include_router(auth.router)
 app.include_router(commerce.router)
 app.add_middleware(
@@ -53,20 +64,35 @@ app.add_middleware(
 )
 
 Db = Annotated[Session, Depends(get_db)]
-_requests: dict[str, deque[datetime]] = defaultdict(deque)
 
 
-def limited(request: Request) -> None:
-    # POC single-process limiter. A shared store is required before scaled deployment.
-    key = f"{request.client.host if request.client else 'unknown'}:{request.url.path}"
-    current = datetime.now(UTC)
-    bucket = _requests[key]
-    cutoff = current - timedelta(minutes=15)
-    while bucket and bucket[0] < cutoff:
-        bucket.popleft()
-    if len(bucket) >= 20:
-        raise HTTPException(429, "Too many submissions. Try again later.")
-    bucket.append(current)
+@app.middleware("http")
+async def log_request(request: Request, call_next):
+    """Emit latency/status telemetry without query strings, bodies, or customer data."""
+    request_id = secrets.token_hex(8)
+    started = perf_counter()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        response.headers["X-Request-ID"] = request_id
+        if request.url.path.startswith(("/api/v1/account", "/api/v1/admin", "/api/v1/auth")):
+            response.headers["Cache-Control"] = "no-store"
+        return response
+    finally:
+        route = request.scope.get("route")
+        request_logger.info(
+            json.dumps(
+                {
+                    "event": "http_request",
+                    "request_id": request_id,
+                    "method": request.method,
+                    "route": getattr(route, "path", "/unmatched"),
+                    "status": status,
+                    "latency_ms": round((perf_counter() - started) * 1000, 2),
+                }
+            )
+        )
 
 
 def admin_change(
@@ -139,7 +165,7 @@ def list_products(
     db: Db,
     biome: str | None = None,
     product_type: str | None = None,
-    availability: str | None = None,
+    availability: Literal["concept", "available"] | None = None,
     refillable: bool | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=12, ge=1, le=48),
@@ -170,7 +196,7 @@ def list_products(
         count_query = count_query.where(models.Product.availability_status == availability)
     if refillable is not None:
         count_query = count_query.where(models.Product.refillable == refillable)
-    total = len(db.execute(count_query).all())
+    total = db.scalar(select(func.count()).select_from(count_query.subquery())) or 0
     return ProductPage(
         items=[public_product(db, p) for p in products], total=total, page=page, page_size=page_size
     )
@@ -198,12 +224,14 @@ def product_detail(slug: str, db: Db):
     return public_product(db, product)
 
 
-@app.post("/api/v1/recommendations", response_model=RecommendationOut)
+@app.post(
+    "/api/v1/recommendations", response_model=RecommendationOut, dependencies=[Depends(limited)]
+)
 def recommend(payload: RecommendationInput, db: Db):
     return evaluate_recommendation(db, payload)
 
 
-@app.post("/api/v1/carts", response_model=CartOut, status_code=201)
+@app.post("/api/v1/carts", response_model=CartOut, status_code=201, dependencies=[Depends(limited)])
 def new_cart(payload: CartCreate, db: Db):
     if payload.token:
         cart = db.scalar(select(models.Cart).where(models.Cart.token == payload.token))
@@ -320,12 +348,59 @@ def record_event(payload: AnalyticsEventIn, db: Db):
     return {"accepted": True}
 
 
+@app.post("/api/v1/admin/products", response_model=ProductOut, status_code=201)
+def create_product(payload: ProductCreate, db: Db, change: Admin):
+    biome = db.scalar(select(models.Biome).where(models.Biome.slug == payload.biome_slug))
+    if not biome or not biome.active:
+        raise HTTPException(422, "Unknown or inactive biome")
+    product = models.Product(
+        brew_number=payload.brew_number,
+        slug=payload.slug,
+        name=payload.name,
+        subtitle="Concept under review",
+        biome_id=biome.id,
+        product_type="Concept under review",
+        form_factor="Concept under review",
+        unit_size="Concept under review",
+        description="Concept under review. Final product details are pending approval.",
+        price_cents=0,
+        availability_status="concept",
+        ingredients=[],
+        usage_instructions="Pending review",
+        warnings="Pending review",
+        storage_instructions="Pending review",
+        packaging="Pending review",
+        shipping_details="Pending review",
+        active=False,
+    )
+    try:
+        db.add(product)
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, "Brew number or slug already exists") from exc
+    audit(db, change, "create", "product", product.id, None, payload.model_dump())
+    db.commit()
+    db.refresh(product)
+    return public_product(db, product)
+
+
+@app.get("/api/v1/admin/products/{product_id}", response_model=ProductOut)
+def admin_product_detail(product_id: str, db: Db, _change: Admin):
+    product = db.get(models.Product, product_id)
+    if not product:
+        raise HTTPException(404, "Product not found")
+    return public_product(db, product)
+
+
 @app.patch("/api/v1/admin/products/{product_id}", response_model=ProductOut)
 def edit_product(product_id: str, payload: ProductAdminPatch, db: Db, change: Admin):
     product = db.get(models.Product, product_id)
     if not product:
         raise HTTPException(404, "Product not found")
     updates = payload.model_dump(exclude_unset=True)
+    if any(value is None for key, value in updates.items() if key != "stripe_recurring_price_id"):
+        raise HTTPException(422, "Product fields cannot be null")
     before = {key: getattr(product, key) for key in updates}
     for key, value in updates.items():
         setattr(product, key, value)

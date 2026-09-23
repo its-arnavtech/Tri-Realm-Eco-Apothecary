@@ -5,6 +5,7 @@ import hmac
 import json
 import time
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from types import SimpleNamespace
 
 from fastapi import HTTPException
@@ -90,7 +91,10 @@ def cart_with_product(http, product_id):
 
 def test_account_session_csrf_and_private_orders(client):
     http, local = client
-    assert http.get("/api/v1/auth/me").status_code == 401
+    anonymous = http.get("/api/v1/auth/me")
+    assert anonymous.status_code == 401
+    assert anonymous.headers["cache-control"] == "no-store"
+    assert len(anonymous.headers["x-request-id"]) == 16
     headers = register_verified(http, local)
     assert http.get("/api/v1/auth/me").json()["email"] == "buyer@example.com"
     assert (
@@ -140,6 +144,78 @@ def test_production_checkout_fails_closed_without_launch_approval(client, monkey
     assert response.status_code == 409
     with local() as db:
         assert db.scalars(select(cm.Order)).all() == []
+
+
+def test_impact_estimates_require_approved_factor_and_delivered_purchase(client):
+    http, local = client
+    product_id = prepare_product(local)
+    assert http.get("/api/v1/account/impact").status_code == 401
+    register_verified(http, local)
+    with local() as db:
+        customer = db.scalar(select(cm.Customer).where(cm.Customer.email == "buyer@example.com"))
+        inventory = db.scalar(
+            select(cm.InventoryItem).where(cm.InventoryItem.product_id == product_id)
+        )
+        order = cm.Order(
+            customer_id=customer.id,
+            status="paid",
+            payment_status="paid",
+            fulfillment_status="delivered",
+            subtotal_cents=6800,
+            fulfilled_at=datetime.now(UTC),
+        )
+        order.items.append(
+            cm.OrderItem(
+                product_id=product_id,
+                inventory_item_id=inventory.id,
+                product_name="The Tri-Realm Catalyst",
+                sku=inventory.sku,
+                quantity=2,
+                unit_price_cents=3400,
+            )
+        )
+        db.add(order)
+        db.add(
+            cm.ImpactFactor(
+                product_id=product_id,
+                metric_type="packaging mass difference",
+                factor_value=Decimal("0.250000"),
+                unit="kg",
+                baseline="Conventional bottle packaging for one unit",
+                comparison_scenario="Approved refill packaging for one unit",
+                methodology_version="v1",
+                source_reference="evidence:packaging-weighing",
+                qualification="Modeled from reviewed packaging masses only",
+                status="approved",
+                valid_from=datetime.now(UTC) - timedelta(days=1),
+            )
+        )
+        db.add(
+            cm.ImpactFactor(
+                product_id=product_id,
+                metric_type="unreviewed metric",
+                factor_value=Decimal("2.000000"),
+                unit="kg",
+                baseline="Unreviewed baseline packaging mass",
+                comparison_scenario="Unreviewed comparison packaging mass",
+                methodology_version="draft",
+                source_reference="internal:draft",
+                qualification="This has not been reviewed",
+                status="draft",
+            )
+        )
+        db.commit()
+    response = http.get("/api/v1/account/impact")
+    assert response.status_code == 200, response.text
+    assert len(response.json()) == 1
+    assert Decimal(response.json()[0]["estimated_value"]) == Decimal("0.5")
+    assert response.json()[0]["units_counted"] == 2
+    assert response.json()[0]["estimate_kind"] == "modeled estimate"
+    with local() as db:
+        order = db.scalar(select(cm.Order))
+        order.payment_status = "refunded"
+        db.commit()
+    assert http.get("/api/v1/account/impact").json() == []
 
 
 def test_checkout_webhook_idempotency_and_inventory(client, monkeypatch):
@@ -193,6 +269,10 @@ def test_checkout_webhook_idempotency_and_inventory(client, monkeypatch):
         customer = db.scalar(select(cm.Customer).where(cm.Customer.email == "buyer@example.com"))
         customer.role = "operations"
         db.commit()
+    metrics = http.get("/api/v1/admin/metrics")
+    assert metrics.status_code == 200
+    assert metrics.json()["orders_by_status"]["paid"] == 1
+    assert metrics.json()["processed_payment_events"] >= 1
     monkeypatch.setattr(
         payment, "create_refund", lambda *args: SimpleNamespace(id="re_1", status="succeeded")
     )

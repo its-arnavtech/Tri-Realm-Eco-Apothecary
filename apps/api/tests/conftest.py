@@ -27,6 +27,10 @@ def client(monkeypatch):
     app.dependency_overrides[get_db] = database
     monkeypatch.setattr(settings, "admin_api_key", "test-admin-secret")
     monkeypatch.setattr(settings, "environment", "local")
+    monkeypatch.setattr(settings, "local_test_commerce", True)
+    monkeypatch.setattr(settings, "stripe_secret_key", "sk_test_fixture")
+    monkeypatch.setattr(settings, "stripe_webhook_secret", "whsec_fixture")
+    monkeypatch.setattr(settings, "stripe_shipping_rate_id", "shr_fixture")
     with TestClient(app) as test_client:
         yield test_client, local
     app.dependency_overrides.clear()

@@ -18,6 +18,8 @@ This document records implementation choices for the September 2026 POC and PDD.
 | Transactional email | Database outbox and scheduled SMTP worker | Registration, recovery and order email survive API restarts and can be retried. |
 | Subscriptions | Stripe subscription Checkout and portal, invoice driven refill orders | A paid renewal creates one order per invoice; unavailable stock goes to a visible hold for later allocation. |
 | Privacy requests | Self export, password confirmed deletion request, audited redaction | Active obligations block deletion; external provider follow-up requires separate evidence. |
+| Abuse controls | Database-backed fixed-window rate limits | Limits public submissions, account entry points, and checkout consistently across API workers. |
+| Build inputs | Hashed API runtime lock and pnpm lock | Makes container dependency resolution repeatable and auditable in CI. |
 
 ## Service boundaries
 
@@ -54,6 +56,7 @@ In any nonlocal environment, `COMMERCE_ENABLED=true` is insufficient by itself. 
 - Material admin changes require a role, CSRF token, reason and append an audit event. The POC admin key works only outside production.
 - Analytics events use an allowlist of properties and anonymous identifiers. Email and payment data are prohibited in event payloads.
 - Intent signups use explicit consent fields and store a consent timestamp and policy version.
+- Request telemetry records route templates, status, latency and a request ID without URLs, bodies, or query strings; private API responses use `Cache-Control: no-store`.
 
 ## Operational notes
 

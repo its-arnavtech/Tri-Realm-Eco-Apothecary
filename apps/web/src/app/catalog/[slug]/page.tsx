@@ -35,7 +35,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       {impact.length > 0 && <div className="detail__body"><div><h2>Reviewed impact method</h2>
         <p>These figures apply only to the stated baseline and comparison scenario.</p></div>
         <div>{impact.map((item) => <div className="note-panel" key={`${item.metric_type}-${item.methodology_version}`}>
-          <p><strong>{item.metric_type}:</strong> {item.factor_value} {item.unit}</p>
+          <p><strong>{item.metric_type} ({item.estimate_kind}):</strong> {item.factor_value} {item.unit} {item.basis}</p>
           <p>Baseline: {item.baseline}</p><p>Compared with: {item.comparison_scenario}</p>
           <p>{item.qualification} · Method {item.methodology_version} · Source: {item.source_reference}</p>
         </div>)}</div></div>}
