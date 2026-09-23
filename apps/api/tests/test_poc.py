@@ -1,0 +1,163 @@
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from app import models, seed
+from app.config import settings
+from app.db import Base, get_db
+from app.main import app
+
+
+@pytest.fixture
+def client(monkeypatch):
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    local = sessionmaker(bind=engine, expire_on_commit=False)
+    monkeypatch.setattr(seed, "SessionLocal", local)
+    seed.seed()
+
+    def database():
+        with local() as db:
+            yield db
+
+    app.dependency_overrides[get_db] = database
+    monkeypatch.setattr(settings, "admin_api_key", "test-admin-secret")
+    with TestClient(app) as test_client:
+        yield test_client, local
+    app.dependency_overrides.clear()
+    engine.dispose()
+
+
+def test_catalog_filters_and_excludes_unapproved_claims(client):
+    http, local = client
+    response = http.get("/api/v1/products?biome=forest")
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    assert response.json()["items"][0]["brew_number"] == 14
+    with local() as db:
+        product = db.scalar(select(models.Product).where(models.Product.brew_number == 14))
+        db.add(
+            models.ClaimEvidence(
+                product_id=product.id,
+                claim_text="Unverified claim",
+                evidence_type="draft",
+                source_reference="internal:pending",
+            )
+        )
+        db.commit()
+    assert http.get("/api/v1/products/pine-mycelium-grounding-drops").json()["claims"] == []
+
+
+def test_recommendation_is_versioned_and_safe(client):
+    http, _ = client
+    payload = {
+        "water_hardness": "hard",
+        "household_size": 5,
+        "usage_area": "general_surfaces",
+        "purchase_type": "starter",
+    }
+    result = http.post("/api/v1/recommendations", json=payload).json()
+    assert result["rule_set_version"] == "poc-1.0.0"
+    assert result["quantity"] == 2
+    assert result["product_slug"] == "tri-realm-catalyst"
+    assert any("hardness" in warning.lower() for warning in result["warnings"])
+    payload["usage_area"] = "water_treatment"
+    unsupported = http.post("/api/v1/recommendations", json=payload).json()
+    assert unsupported["supported"] is False
+    assert unsupported["product_slug"] is None
+    payload["usage_area"] = "general_surfaces"
+    payload["household_size"] = 0
+    assert http.post("/api/v1/recommendations", json=payload).status_code == 422
+
+
+def test_cart_uses_server_price_and_private_token(client):
+    http, _ = client
+    product = http.get("/api/v1/products/tri-realm-catalyst").json()
+    cart = http.post("/api/v1/carts", json={}).json()
+    path = f"/api/v1/carts/{cart['id']}"
+    assert http.get(path).status_code == 404
+    response = http.post(
+        path + "/items",
+        headers={"X-Cart-Token": cart["token"]},
+        json={"product_id": product["id"], "quantity": 2, "price_cents": 1},
+    )
+    assert response.status_code == 200
+    assert response.json()["subtotal_cents"] == product["price_cents"] * 2
+    assert response.json()["total_cents"] is None
+    item_id = response.json()["items"][0]["id"]
+    assert (
+        http.patch(
+            path + f"/items/{item_id}", headers={"X-Cart-Token": "wrong"}, json={"quantity": 1}
+        ).status_code
+        == 404
+    )
+    assert (
+        http.patch(
+            path + f"/items/{item_id}",
+            headers={"X-Cart-Token": cart["token"]},
+            json={"quantity": 1},
+        ).json()["subtotal_cents"]
+        == product["price_cents"]
+    )
+    assert http.post("/api/v1/checkout/session").status_code == 409
+
+
+def test_intent_requires_consent_and_analytics_rejects_pii(client):
+    http, _ = client
+    assert (
+        http.post(
+            "/api/v1/intent-signups",
+            json={
+                "email": "user@example.com",
+                "contact_consent": False,
+            },
+        ).status_code
+        == 422
+    )
+    assert (
+        http.post(
+            "/api/v1/intent-signups",
+            json={
+                "email": "user@example.com",
+                "contact_consent": True,
+                "marketing_consent": False,
+            },
+        ).status_code
+        == 201
+    )
+    event = {
+        "event_name": "page_view",
+        "anonymous_id": "anonymous123",
+        "session_id": "session123",
+        "context": {"page": "home"},
+    }
+    assert http.post("/api/v1/events", json=event).status_code == 202
+    event["context"] = {"email": "user@example.com"}
+    assert http.post("/api/v1/events", json=event).status_code == 422
+    event["context"] = {"page": "user@example.com"}
+    assert http.post("/api/v1/events", json=event).status_code == 422
+
+
+def test_admin_requires_key_and_audits_change(client):
+    http, local = client
+    product = http.get("/api/v1/products/tri-realm-catalyst").json()
+    path = f"/api/v1/admin/products/{product['id']}"
+    assert http.patch(path, json={"name": "New name"}).status_code == 403
+    response = http.patch(
+        path,
+        headers={
+            "X-Admin-Key": "test-admin-secret",
+            "X-Actor": "operator",
+            "X-Reason": "POC copy correction",
+        },
+        json={"name": "Catalyst concept"},
+    )
+    assert response.status_code == 200
+    with local() as db:
+        audit = db.scalar(select(models.AuditEvent))
+        assert audit.actor == "operator"
+        assert audit.before_snapshot["name"] == product["name"]
