@@ -9,7 +9,8 @@ LOCAL_DATABASE_URL = (
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=str(Path(__file__).resolve().parents[3] / ".env"), extra="ignore"
+        env_file=str(Path(__file__).resolve().parent.parent.parent.parent / ".env"),
+        extra="ignore",
     )
 
     database_url: str = LOCAL_DATABASE_URL

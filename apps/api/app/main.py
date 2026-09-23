@@ -104,7 +104,8 @@ def admin_change(
 ) -> AdminChange:
     session = auth.resolve_session(db, request.cookies.get("brew67_session"))
     if session and session.customer.role in {"operations", "admin"}:
-        auth.enforce_csrf(request, session)
+        if request.method not in {"GET", "HEAD", "OPTIONS"}:
+            auth.enforce_csrf(request, session)
         return AdminChange(actor=session.customer.email, reason=x_reason or "Operational change")
     if settings.environment != "local" or not settings.web_origin.startswith("http://localhost"):
         raise HTTPException(403, "Admin authorization required")
