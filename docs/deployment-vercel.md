@@ -2,6 +2,10 @@
 
 The public web app runs on Vercel. The existing FastAPI app and PostgreSQL database must be hosted separately: catalog pages fetch API data on the server, and browser actions use the web app's `/api/v1` proxy. Keep `COMMERCE_ENABLED=false`; this deployment presents concepts and does not authorize sales.
 
+## Hosting plan and cost
+
+Vercel's free Hobby plan is restricted to personal, noncommercial use. If this is the public site for a business or future product brand, use Vercel Pro even while checkout is disabled. As of September 2026, its platform fee is $20/month for one deploying seat, with additional usage billed according to the plan. Render's smallest paid API web service is $7/month and its smallest paid PostgreSQL instance is $6/month, before database storage, a mail worker/provider, and any usage charges. This makes the basic durable web + API + database setup about **$33/month** before extras. Check each provider's checkout summary before accepting a paid plan.
+
 ## 1. Deploy the database and API
 
 Render is a straightforward host for the existing API container and a managed PostgreSQL database. Choose a paid PostgreSQL plan with backups for a durable public site. Render's free PostgreSQL plan expires after 30 days and is suitable only for a temporary demonstration.
@@ -58,4 +62,4 @@ Keep the domain registered with its current registrar and use an **external doma
 - Confirm API readiness, error logs, database backups, and a tested restore. Configure account email delivery and data retention jobs before accepting signups.
 - After changing `API_INTERNAL_URL`, redeploy the Vercel project so its rewrite configuration uses the new API origin.
 
-References: [Vercel Git deployments](https://vercel.com/docs/git), [Vercel monorepo root directories](https://vercel.com/docs/monorepos), [Vercel Corepack](https://vercel.com/docs/builds/configure-a-build), [Vercel custom domains](https://vercel.com/docs/domains/working-with-domains/add-a-domain), [Porkbun DNS records](https://kb.porkbun.com/article/68-how-to-edit-dns-records), [Render Docker services](https://render.com/docs/docker), [Render pre-deploy commands](https://render.com/docs/deploys), and [Render free tier limits](https://render.com/docs/free).
+References: [Vercel Git deployments](https://vercel.com/docs/git), [Vercel monorepo root directories](https://vercel.com/docs/monorepos), [Vercel Corepack](https://vercel.com/docs/builds/configure-a-build), [Vercel custom domains](https://vercel.com/docs/domains/working-with-domains/add-a-domain), [Vercel Hobby restrictions](https://vercel.com/docs/plans/hobby), [Vercel Pro pricing](https://vercel.com/docs/plans/pro-plan), [Porkbun DNS records](https://kb.porkbun.com/article/68-how-to-edit-dns-records), [Render pricing](https://render.com/pricing), [Render Docker services](https://render.com/docs/docker), [Render pre-deploy commands](https://render.com/docs/deploys), and [Render free tier limits](https://render.com/docs/free).
