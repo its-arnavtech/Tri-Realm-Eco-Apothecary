@@ -1,15 +1,14 @@
 import Link from "next/link";
-import { money } from "@/lib/api";
-import type { Product } from "@/lib/types";
+import type { Concept } from "@/lib/content";
 import { RealmArt } from "./RealmArt";
 
-export function ProductCard({ product }: { product: Product }) {
-  return <article className={`product-card product-card--${product.biome}`}>
-    <Link href={`/catalog/${product.slug}`} className="product-card__art" aria-label={`Explore ${product.name}`}><RealmArt realm={product.biome} /></Link>
-    <div className="product-card__body"><div className="eyebrow">Brew No. {product.brew_number} <span>·</span> {product.biome.replace("-", " ")}</div>
+export function ProductCard({ product }: { product: Concept }) {
+  return <article className={`product-card product-card--${product.realm}`}>
+    <Link href={`/catalog/${product.slug}`} className="product-card__art" aria-label={`Explore ${product.name}`}><RealmArt realm={product.realm} /></Link>
+    <div className="product-card__body"><div className="eyebrow">Brew No. {product.number} <span>·</span> {product.realm.replace("-", " ")}</div>
       <h3><Link href={`/catalog/${product.slug}`}>{product.name}</Link></h3>
-      <p>{product.description}</p>
-      <div className="product-card__bottom"><span>{product.availability_status === "available" ? "" : "Illustrative "}{money(product.price_cents)}</span><Link href={`/catalog/${product.slug}`} aria-label={`View brew: ${product.name}`}>View brew <span aria-hidden="true">↗</span></Link></div>
+      <p>{product.summary}</p>
+      <div className="product-card__bottom"><span>Concept / In development</span><Link href={`/catalog/${product.slug}`} aria-label={`View concept: ${product.name}`}>Explore <span aria-hidden="true">↗</span></Link></div>
     </div>
   </article>;
 }

@@ -83,4 +83,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t brew67-api:test apps/api
-      - run: docker build --build-arg API_INTERNAL_URL=http://api:8000 -t brew67-web:test apps/web
+      - run: docker build -t brew67-web:test apps/web

@@ -62,20 +62,9 @@ services:
         condition: service_started
 
   web:
-    build:
-      context: ./apps/web
-      args:
-        API_INTERNAL_URL: http://api:8000
-    environment:
-      API_INTERNAL_URL: http://api:8000
-      SUPPORT_EMAIL: ${SUPPORT_EMAIL:-}
-      TERMS_URL: ${TERMS_URL:-}
-      REFUND_POLICY_URL: ${REFUND_POLICY_URL:-}
+    build: ./apps/web
     ports:
       - "127.0.0.1:3000:3000"
-    depends_on:
-      api:
-        condition: service_healthy
 
   mailpit:
     image: axllent/mailpit:v1.31.1

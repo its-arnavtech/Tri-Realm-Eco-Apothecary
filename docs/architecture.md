@@ -1,6 +1,6 @@
 # brew67potions implementation architecture
 
-This document records implementation choices for the September 2026 POC and PDD. The source DOCX and PDF remain the product baseline. Code must preserve the source document's distinction between a concept experience and a legally approved sale.
+This document records the original September 2026 POC and PDD implementation. The current public website is a static, informational concept site built from `apps/web`; it does not call the API or use a database. The FastAPI and commerce code remain in the repository as prior POC work and are not part of the public deployment. See [deployment-vercel.md](deployment-vercel.md) for the current hosting path.
 
 ## Decisions
 
