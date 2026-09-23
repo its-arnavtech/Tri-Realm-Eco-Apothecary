@@ -9,7 +9,7 @@ const realms = [
 ];
 
 export default function RealmsPage() {
-  return <main id="main"><Analytics page="realms" /><section className="page-hero page-hero--dark"><div className="shell"><p className="section-number">WORLD OF BREW67 / 001</p><h1>Three realms.<br /><em>Many possibilities.</em></h1><p>Step into each realm to explore its story and the concept brews it inspires. Every practical detail remains open to testing and review.</p></div></section>
+  return <main id="main"><Analytics page="realms" /><section className="page-hero page-hero--dark"><div className="shell"><p className="section-number">WORLD OF BREW67 / 001</p><h1>Three realms.<br /><em>Many possibilities.</em></h1><p>Step into each realm to explore its story and the brews it inspires. Each product page shows the current details and approval status.</p></div></section>
     <section className="content-section shell"><div className="realm-grid">{realms.map((realm) => <Link key={realm.slug} className={`realm-tile realm-tile--${realm.slug}`} href={`/realms/${realm.slug}`}><div className="realm-tile__top"><span>{realm.number} / REALM</span><span aria-hidden="true">↗</span></div><RealmArt realm={realm.slug} /><div className="realm-tile__bottom"><span>{realm.title}</span><h3>{realm.name}</h3><p>{realm.description}</p></div></Link>)}</div></section>
   </main>;
 }

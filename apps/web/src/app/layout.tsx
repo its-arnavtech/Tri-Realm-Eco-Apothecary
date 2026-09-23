@@ -9,7 +9,7 @@ const serif = DM_Serif_Display({ subsets: ["latin"], weight: "400", style: ["nor
 
 export const metadata: Metadata = {
   title: { default: "brew67potions | Explore the three realms", template: "%s | brew67potions" },
-  description: "Explore sustainable product concepts through Forest, Ocean and Mountain. A transparent proof of concept.",
+  description: "Explore brews inspired by Forest, Ocean and Mountain, with clear ingredients, availability and evidence.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

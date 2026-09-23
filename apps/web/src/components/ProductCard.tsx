@@ -9,7 +9,7 @@ export function ProductCard({ product }: { product: Product }) {
     <div className="product-card__body"><div className="eyebrow">Brew No. {product.brew_number} <span>·</span> {product.biome.replace("-", " ")}</div>
       <h3><Link href={`/catalog/${product.slug}`}>{product.name}</Link></h3>
       <p>{product.description}</p>
-      <div className="product-card__bottom"><span>Illustrative {money(product.price_cents)}</span><Link href={`/catalog/${product.slug}`} aria-label={`View details for ${product.name}`}>View brew <span aria-hidden="true">↗</span></Link></div>
+      <div className="product-card__bottom"><span>{product.availability_status === "available" ? "" : "Illustrative "}{money(product.price_cents)}</span><Link href={`/catalog/${product.slug}`} aria-label={`View brew: ${product.name}`}>View brew <span aria-hidden="true">↗</span></Link></div>
     </div>
   </article>;
 }

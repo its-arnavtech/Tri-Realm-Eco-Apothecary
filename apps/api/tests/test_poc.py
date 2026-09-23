@@ -1,43 +1,22 @@
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy import select
 
-from app import models, seed
-from app.config import settings
-from app.db import Base, get_db
-from app.main import app
-
-
-@pytest.fixture
-def client(monkeypatch):
-    engine = create_engine(
-        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
-    )
-    Base.metadata.create_all(engine)
-    local = sessionmaker(bind=engine, expire_on_commit=False)
-    monkeypatch.setattr(seed, "SessionLocal", local)
-    seed.seed()
-
-    def database():
-        with local() as db:
-            yield db
-
-    app.dependency_overrides[get_db] = database
-    monkeypatch.setattr(settings, "admin_api_key", "test-admin-secret")
-    with TestClient(app) as test_client:
-        yield test_client, local
-    app.dependency_overrides.clear()
-    engine.dispose()
+from app import commerce_models as cm
+from app import models
 
 
 def test_catalog_filters_and_excludes_unapproved_claims(client):
     http, local = client
+    assert http.get("/api/v1/products/facets").json() == [
+        "home-care concept",
+        "multi-surface concept",
+    ]
     response = http.get("/api/v1/products?biome=forest")
     assert response.status_code == 200
     assert response.json()["total"] == 1
     assert response.json()["items"][0]["brew_number"] == 14
+    assert http.get("/api/v1/products?availability=available").json()["total"] == 0
+    assert http.get("/api/v1/products?availability=concept").json()["total"] == 4
+    assert http.get("/api/v1/products?availability=invalid").status_code == 422
     with local() as db:
         product = db.scalar(select(models.Product).where(models.Product.brew_number == 14))
         db.add(
@@ -161,3 +140,77 @@ def test_admin_requires_key_and_audits_change(client):
         audit = db.scalar(select(models.AuditEvent))
         assert audit.actor == "operator"
         assert audit.before_snapshot["name"] == product["name"]
+
+
+def test_staff_can_create_private_product_draft(client):
+    http, local = client
+    path = "/api/v1/admin/products"
+    payload = {
+        "brew_number": 88,
+        "slug": "new-forest-brew",
+        "name": "New forest brew",
+        "biome_slug": "forest",
+    }
+    headers = {
+        "X-Admin-Key": "test-admin-secret",
+        "X-Actor": "operator",
+        "X-Reason": "New product concept draft",
+    }
+    assert http.post(path, json=payload).status_code == 403
+    created = http.post(path, headers=headers, json=payload)
+    assert created.status_code == 201
+    product_id = created.json()["id"]
+    assert created.json()["availability_status"] == "concept"
+    assert http.get(f"{path}/{product_id}").status_code == 403
+    assert http.get(f"{path}/{product_id}", headers=headers).status_code == 200
+    assert http.get("/api/v1/products/new-forest-brew").status_code == 404
+    assert http.post(path, headers=headers, json=payload).status_code == 409
+    assert (
+        http.post(
+            path, headers=headers, json={**payload, "biome_slug": "unknown", "slug": "other-brew"}
+        ).status_code
+        == 422
+    )
+    assert (
+        http.patch(f"{path}/{product_id}", headers=headers, json={"active": True}).status_code
+        == 200
+    )
+    assert http.get("/api/v1/products/new-forest-brew").status_code == 200
+    assert (
+        http.patch(
+            f"{path}/{product_id}", headers=headers, json={"availability_status": "available"}
+        ).status_code
+        == 409
+    )
+    with local() as db:
+        events = db.scalars(
+            select(models.AuditEvent).where(models.AuditEvent.entity_id == product_id)
+        ).all()
+        assert [event.action for event in events] == ["create", "update"]
+
+
+def test_public_submission_limit_is_shared_in_database(client):
+    http, local = client
+    payload = {
+        "email": "interest@example.com",
+        "contact_consent": True,
+        "marketing_consent": False,
+    }
+    for _ in range(10):
+        assert http.post("/api/v1/intent-signups", json=payload).status_code == 201
+    assert http.post("/api/v1/intent-signups", json=payload).status_code == 429
+    with local() as db:
+        bucket = db.scalar(select(cm.RateLimitBucket))
+        assert bucket.attempts == 11
+    assert (
+        http.post(
+            "/api/v1/events",
+            json={
+                "event_name": "page_view",
+                "anonymous_id": "anonymous123",
+                "session_id": "session123",
+                "context": {"page": "home"},
+            },
+        ).status_code
+        == 202
+    )
