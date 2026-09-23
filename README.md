@@ -17,7 +17,7 @@ Local performance and accessibility measurements, plus remaining launch validati
 
 Visit `http://localhost:3000`. API docs are at `http://localhost:8000/docs` in local development.
 
-To run the full local container topology, use `docker compose -f compose.full.yaml up --build` after copying `.env.example` to `.env`. It includes PostgreSQL, migrations, the API, web app, worker, and a local Mailpit inbox at `http://localhost:8025`. The Docker daemon must be running. The local Compose database password is for development only.
+To run the full local container topology on Windows PowerShell, use `Copy-Item .env.example .env` once, then `docker compose -f compose.full.yaml up --build -d`. It includes PostgreSQL, migrations, the API, web app, worker, and a local Mailpit inbox at `http://localhost:8026`. The Docker daemon must be running. Set `MAILPIT_UI_PORT` in `.env` if that host port is occupied. View status with `docker compose -f compose.full.yaml ps`; stop with `docker compose -f compose.full.yaml down` (the database volume is retained). The local Compose database password is for development only.
 
 Create the first administrator from an interactive API terminal with `python -m app.bootstrap_admin` after migrations. Subsequent staff roles are assigned through the audited admin API or operations dashboard. Registration and password recovery require the email worker: run `python -m app.jobs` every minute, with SMTP settings configured. Run `python -m app.retention` daily.
 

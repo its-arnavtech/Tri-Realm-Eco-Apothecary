@@ -189,6 +189,34 @@ def test_staff_can_create_private_product_draft(client):
         assert [event.action for event in events] == ["create", "update"]
 
 
+def test_staff_can_read_admin_product_without_csrf_but_mutation_requires_it(client):
+    http, local = client
+    registered = http.post(
+        "/api/v1/auth/register",
+        json={"email": "operator@example.com", "password": "a-long-test-password"},
+    )
+    assert registered.status_code == 201
+    with local() as db:
+        operator = db.scalar(select(cm.Customer).where(cm.Customer.email == "operator@example.com"))
+        operator.role = "operations"
+        db.commit()
+    product_id = http.get("/api/v1/products/tri-realm-catalyst").json()["id"]
+    path = f"/api/v1/admin/products/{product_id}"
+    assert http.get(path).status_code == 200
+    assert http.patch(path, json={"name": "Updated name"}).status_code == 403
+    assert (
+        http.patch(
+            path,
+            headers={
+                "X-CSRF-Token": http.cookies["brew67_csrf"],
+                "X-Reason": "Reviewed product copy",
+            },
+            json={"name": "Updated name"},
+        ).status_code
+        == 200
+    )
+
+
 def test_public_submission_limit_is_shared_in_database(client):
     http, local = client
     payload = {
