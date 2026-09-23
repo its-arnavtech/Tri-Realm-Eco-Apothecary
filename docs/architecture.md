@@ -14,6 +14,10 @@ This document records implementation choices for the September 2026 POC and PDD.
 | Recommendations | Versioned, deterministic rules | Every result is reproducible and includes rationale and limitations. |
 | Impact | No numerical claim without approved factors | Modeled estimates require source, baseline, boundary, unit, methodology version, and qualification. |
 | Geography | United States only for the initial commerce configuration | Tax and shipping expansion requires a separate release review. |
+| Identity | Argon2 password hashes, hashed database sessions, Secure/HttpOnly cookies and CSRF token | Accounts and staff roles are server owned. Production uses HTTPS and no shared admin key. |
+| Transactional email | Database outbox and scheduled SMTP worker | Registration, recovery and order email survive API restarts and can be retried. |
+| Subscriptions | Stripe subscription Checkout and portal, invoice driven refill orders | A paid renewal creates one order per invoice; unavailable stock goes to a visible hold for later allocation. |
+| Privacy requests | Self export, password confirmed deletion request, audited redaction | Active obligations block deletion; external provider follow-up requires separate evidence. |
 
 ## Service boundaries
 
@@ -25,15 +29,21 @@ flowchart LR
   api --> payments[Hosted payment provider]
   payments --> webhook[Verified webhook]
   webhook --> api
-  api --> mail[Transactional email provider]
+  worker[Scheduled worker] --> db
+  worker --> mail[SMTP provider]
+  worker --> payments
   admin[Operations staff] --> api
 ```
 
 The web server fetches public catalog data from the API. Browser mutations use the same-origin `/api/v1` proxy. The API owns validation, pricing, inventory, consent, orders, and audit records. No browser-provided price, role, stock count, or payment state is authoritative.
 
+The order state machine starts with a stock reservation. A hosted Checkout session either confirms payment through a signed, idempotent webhook or expires and releases the reservation. Subscription invoices create separate orders and decrement available stock only once. A paid invoice without stock is retained as a stock hold and must be allocated before fulfillment. Refunds are keyed by an internal record and reconciled from provider events. Price and formulation snapshots remain on each order item.
+
 ## Release gates
 
 All seed products have `concept` availability and may appear in a clearly labeled simulated cart. The API must reject payment checkout for a product unless its formulation, safety document, usage directions, labeling, price, inventory, shipping, tax, and claims have approved records. The default `COMMERCE_ENABLED=false` gate also blocks checkout globally. A reviewer must verify the evidence and operational prerequisites before changing that configuration.
+
+In any nonlocal environment, `COMMERCE_ENABLED=true` is insufficient by itself. Checkout additionally requires a launch approval reference, public support address, HTTPS terms and refund links, HTTPS web URL, Stripe credentials and shipping rate, and operational email configuration. Product publication rechecks the same product gates and rejects placeholder concept copy.
 
 ## API and data conventions
 
@@ -41,10 +51,12 @@ All seed products have `concept` availability and may appear in a clearly labele
 - All money uses integer minor units and ISO 4217 currency codes.
 - Product slugs and brew numbers are unique. Public responses exclude unapproved claims.
 - Every recommendation includes a rule set version, echoed inputs, rationale, assumptions, and warnings.
-- Material admin changes require an actor and reason and append an audit event.
+- Material admin changes require a role, CSRF token, reason and append an audit event. The POC admin key works only outside production.
 - Analytics events use an allowlist of properties and anonymous identifiers. Email and payment data are prohibited in event payloads.
 - Intent signups use explicit consent fields and store a consent timestamp and policy version.
 
 ## Operational notes
 
 Local development starts PostgreSQL with `docker compose up -d db`, applies Alembic migrations, seeds the concept catalog, starts FastAPI on port 8000, and starts Next.js on port 3000. Production must use separate credentials, managed secrets, encrypted backups, request and error monitoring, a tested restore, and a reviewed incident runbook.
+
+See [commerce-runbook.md](commerce-runbook.md) for the scheduler, payment events, release sequence, privacy workflow, and recovery procedure. `compose.full.yaml` exercises the container topology locally; it is not a production manifest. The source POC/PDD remains unchanged because these are implementation decisions and do not alter its product requirements.

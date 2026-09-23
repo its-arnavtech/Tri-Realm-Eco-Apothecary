@@ -145,8 +145,16 @@ class AnalyticsEventIn(BaseModel):
 
 class ProductAdminPatch(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=160)
+    subtitle: str | None = Field(default=None, min_length=2, max_length=200)
     description: str | None = Field(default=None, min_length=10)
+    product_type: str | None = Field(default=None, min_length=2, max_length=60)
+    form_factor: str | None = Field(default=None, min_length=2, max_length=100)
     price_cents: int | None = Field(default=None, ge=0)
+    unit_size: str | None = Field(default=None, min_length=2, max_length=80)
+    availability_status: Literal["concept", "available", "unavailable"] | None = None
+    stripe_recurring_price_id: str | None = Field(default=None, max_length=160)
+    refillable: bool | None = None
+    ingredients: list[str] | None = None
     usage_instructions: str | None = None
     warnings: str | None = None
     storage_instructions: str | None = None

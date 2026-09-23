@@ -9,8 +9,9 @@ export function SiteHeader() {
         <Link href="/catalog">The brews</Link>
         <Link href="/configure">Find your brew</Link>
         <Link href="/about">Our approach</Link>
+        <Link href="/account">Account</Link>
       </nav>
-      <Link href="/cart" className="cart-link" aria-label="View concept cart">Cart <span aria-hidden="true">↗</span></Link>
+      <Link href="/cart" className="cart-link" aria-label="View cart">Cart <span aria-hidden="true">↗</span></Link>
     </div>
   </header>;
 }

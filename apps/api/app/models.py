@@ -57,6 +57,7 @@ class Product(Base):
     price_cents: Mapped[int] = mapped_column(Integer)
     currency: Mapped[str] = mapped_column(String(3), default="USD")
     refillable: Mapped[bool] = mapped_column(Boolean, default=False)
+    stripe_recurring_price_id: Mapped[str | None] = mapped_column(String(160))
     availability_status: Mapped[str] = mapped_column(String(30), default="concept")
     ingredients: Mapped[list] = mapped_column(JSON, default=list)
     usage_instructions: Mapped[str] = mapped_column(Text)

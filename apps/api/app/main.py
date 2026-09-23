@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session, joinedload
 
-from app import models
+from app import auth, commerce, commerce_service, models
 from app.config import settings
 from app.db import get_db
 from app.schemas import (
@@ -35,12 +35,21 @@ from app.schemas import (
 from app.services import cart_view, create_cart, evaluate_recommendation, get_cart, public_product
 
 app = FastAPI(title="brew67potions API", version="0.1.0")
+app.include_router(auth.router)
+app.include_router(commerce.router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.web_origin],
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE"],
-    allow_headers=["Content-Type", "X-Cart-Token", "X-Admin-Key", "X-Actor", "X-Reason"],
+    allow_headers=[
+        "Content-Type",
+        "X-Cart-Token",
+        "X-Admin-Key",
+        "X-Actor",
+        "X-Reason",
+        "X-CSRF-Token",
+    ],
 )
 
 Db = Annotated[Session, Depends(get_db)]
@@ -61,10 +70,18 @@ def limited(request: Request) -> None:
 
 
 def admin_change(
+    request: Request,
+    db: Db,
     x_admin_key: Annotated[str | None, Header()] = None,
     x_actor: Annotated[str | None, Header()] = None,
     x_reason: Annotated[str | None, Header()] = None,
 ) -> AdminChange:
+    session = auth.resolve_session(db, request.cookies.get("brew67_session"))
+    if session and session.customer.role in {"operations", "admin"}:
+        auth.enforce_csrf(request, session)
+        return AdminChange(actor=session.customer.email, reason=x_reason or "Operational change")
+    if settings.environment != "local" or not settings.web_origin.startswith("http://localhost"):
+        raise HTTPException(403, "Admin authorization required")
     if not settings.admin_api_key:
         raise HTTPException(503, "Admin operations are not configured")
     if not x_admin_key or not secrets.compare_digest(x_admin_key, settings.admin_api_key):
@@ -157,6 +174,16 @@ def list_products(
     return ProductPage(
         items=[public_product(db, p) for p in products], total=total, page=page, page_size=page_size
     )
+
+
+@app.get("/api/v1/products/facets", response_model=list[str])
+def product_type_facets(db: Db):
+    return db.scalars(
+        select(models.Product.product_type)
+        .where(models.Product.active.is_(True))
+        .distinct()
+        .order_by(models.Product.product_type)
+    ).all()
 
 
 @app.get("/api/v1/products/{slug}", response_model=ProductOut)
@@ -293,11 +320,6 @@ def record_event(payload: AnalyticsEventIn, db: Db):
     return {"accepted": True}
 
 
-@app.post("/api/v1/checkout/session", status_code=409)
-def checkout_unavailable():
-    raise HTTPException(409, "Checkout is disabled until product and commerce release gates pass")
-
-
 @app.patch("/api/v1/admin/products/{product_id}", response_model=ProductOut)
 def edit_product(product_id: str, payload: ProductAdminPatch, db: Db, change: Admin):
     product = db.get(models.Product, product_id)
@@ -307,6 +329,10 @@ def edit_product(product_id: str, payload: ProductAdminPatch, db: Db, change: Ad
     before = {key: getattr(product, key) for key in updates}
     for key, value in updates.items():
         setattr(product, key, value)
+    if product.availability_status == "available":
+        errors = commerce_service.release_errors(db, product, require_published=False)
+        if errors:
+            raise HTTPException(409, {"release_errors": errors})
     product.version += 1
     audit(db, change, "update", "product", product.id, before, updates)
     db.commit()

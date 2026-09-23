@@ -4,12 +4,23 @@ const base = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 const storageKey = "brew67_cart";
 
 export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const csrf = typeof document === "undefined" ? "" : document.cookie
+    .split("; ").find((entry) => entry.startsWith("brew67_csrf="))?.split("=")[1] ?? "";
+  const method = options.method?.toUpperCase() ?? "GET";
   const response = await fetch(`${base}${path}`, {
     ...options,
-    headers: { "Content-Type": "application/json", ...options.headers },
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json",
+      ...(csrf && !["GET", "HEAD"].includes(method) ? { "X-CSRF-Token": decodeURIComponent(csrf) } : {}),
+      ...options.headers },
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.detail ?? `Request failed: ${response.status}`);
+  if (!response.ok) {
+    const detail = body.detail;
+    const message = typeof detail === "string" ? detail
+      : detail?.release_errors?.join("; ") ?? `Request failed: ${response.status}`;
+    throw new Error(message);
+  }
   return body as T;
 }
 

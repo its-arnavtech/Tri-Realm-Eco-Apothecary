@@ -7,6 +7,22 @@ on:
 jobs:
   api:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: brew67
+          POSTGRES_USER: brew
+          POSTGRES_PASSWORD: brew
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U brew -d brew67"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://brew:brew@localhost:5432/brew67
     defaults:
       run:
         working-directory: apps/api
@@ -21,6 +37,7 @@ jobs:
       - run: pytest -q
       - run: alembic upgrade head
       - run: alembic check
+      - run: python -m app.seed
 
   web:
     runs-on: ubuntu-latest
@@ -41,3 +58,11 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm build
+
+  containers:
+    runs-on: ubuntu-latest
+    needs: [api, web]
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t brew67-api:test apps/api
+      - run: docker build --build-arg API_INTERNAL_URL=http://api:8000 -t brew67-web:test apps/web
