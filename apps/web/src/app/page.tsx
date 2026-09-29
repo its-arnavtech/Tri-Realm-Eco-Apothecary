@@ -7,10 +7,10 @@ export default function Home() {
     <section className="hero hero--editorial">
       <div className="hero__image" aria-hidden="true" />
       <div className="shell hero__layout"><div className="hero__copy">
-        <p className="kicker"><span className="kicker__line" /> An apothecary of ideas</p>
+        <p className="kicker">An apothecary of ideas</p>
         <h1>Wonder, drawn<br />from the <em>natural world.</em></h1>
         <p>Meet brew67potions: a creative exploration of everyday care through three distinct realms. Discover the stories and early concepts taking shape.</p>
-        <div className="hero__actions"><Link className="button button--gold" href="/realms">Enter the realms <span aria-hidden="true">↗</span></Link><Link className="text-link" href="/catalog">Explore the concepts <span aria-hidden="true">→</span></Link></div>
+        <div className="hero__actions"><Link className="button button--gold" href="/realms">Enter the realms</Link><Link className="text-link" href="/catalog">Explore the concepts</Link></div>
         <p className="hero__note">A concept experience. No products are available for purchase.</p>
       </div></div>
       <div className="hero__index shell"><span>FOREST / OCEAN / MOUNTAIN</span><span>SCROLL TO EXPLORE ↓</span></div>

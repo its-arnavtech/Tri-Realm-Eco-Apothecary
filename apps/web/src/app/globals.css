@@ -25,7 +25,7 @@ h1,h2,h3,p{margin-top:0}
 .hero{position:relative;min-height:740px;overflow:hidden;background:#14271f;color:#f4f1e7}
 .hero__image{position:absolute;inset:0;background-image:linear-gradient(90deg,#0c1b17f7 0%,#0d211dcf 35%,#14271e48 64%,#0b151312 100%),linear-gradient(0deg,#081a15a8,transparent 24%),url('/images/tri-realm-hero.webp');background-size:cover;background-position:center 51%;transform:scale(1.01)}
 .hero__layout{position:relative;min-height:675px;display:flex;align-items:center}.hero__copy{width:min(100%,700px);padding:5rem 0 4rem}
-.kicker{display:flex;align-items:center;gap:1rem;color:#dec18b}.kicker__line{width:38px;height:1px;background:currentColor}
+.kicker{color:#dec18b}
 .hero h1,.intro-section h2,.feature-section h2,.manifesto h2,.page-hero h1,.detail h1,.about-intro h2,.about-statement h2,.realm-story h2{font-family:var(--font-serif),Georgia,serif;font-weight:400;line-height:1.03;letter-spacing:-.03em}
 .hero h1{font-size:clamp(4.1rem,6.4vw,6.9rem);margin:1.4rem 0 1.7rem;max-width:760px}.hero h1 em,.intro-section h2 em,.feature-section h2 em,.manifesto h2 em,.page-hero h1 em{color:#ddb984;font-weight:400}
 .hero__copy>p:not(.hero__note):not(.kicker){max-width:510px;color:#e1e5da;font-size:1.02rem;line-height:1.85}.hero__actions{display:flex;align-items:center;gap:2.2rem;flex-wrap:wrap;margin-top:2rem}.hero__note{font-size:.73rem;color:#c5d0c3;margin:3rem 0 0}.hero__index{position:relative;display:flex;justify-content:space-between;border-top:1px solid #ffffff52;padding:1rem 0 1.25rem;font-size:.62rem;letter-spacing:.16em;color:#dae1d4}
