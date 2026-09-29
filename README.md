@@ -18,8 +18,9 @@ Open `http://localhost:3000`. To produce the deployable static files, run `pnpm 
 - Pages: `apps/web/src/app`
 - Visual styling: `apps/web/src/app/globals.css`
 - Hero image: `apps/web/public/images/tri-realm-hero.webp`
+- Realm images: `apps/web/public/images/realm-{forest,ocean,mountain}.webp`
 
-The hero image is generated concept artwork. It depicts no actual product. All concept pages state that the ideas are not available for use or sale.
+The hero and realm images are generated concept artwork. They depict no actual product or documented location. The [realm image prompts](docs/realm-image-prompts.md) record how the three nature scenes were created. All concept pages state that the ideas are not available for use or sale.
 
 ## Deploy
 
