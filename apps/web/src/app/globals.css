@@ -19,7 +19,7 @@ h1,h2,h3,p{margin-top:0}
 .site-header__inner{min-height:82px;display:flex;align-items:center;justify-content:space-between;gap:2rem}
 .brand{display:inline-flex;align-items:center;gap:.5rem;font-family:var(--font-serif),Georgia,serif;font-size:1.55rem;white-space:nowrap;letter-spacing:-.025em}.brand__symbol,.brand__number{color:var(--gold)}.brand__symbol{font-family:Arial,sans-serif;font-size:1.2rem}
 .main-nav{display:flex;align-items:center;gap:2.8rem}.main-nav a,.header-cta{font-size:.69rem;letter-spacing:.13em;text-transform:uppercase;font-weight:700;white-space:nowrap}.main-nav a:hover,.header-cta:hover{color:var(--gold)}
-.header-cta{display:inline-flex;gap:1.35rem;align-items:center;border:1px solid #d2bc8c8a;padding:.75rem .9rem;color:#e8d6ad}
+.header-cta{display:inline-flex;align-items:center;border:1px solid #d2bc8c8a;padding:.75rem .9rem;color:#e8d6ad}
 
 /* Opening scene */
 .hero{position:relative;min-height:740px;overflow:hidden;background:#14271f;color:#f4f1e7}

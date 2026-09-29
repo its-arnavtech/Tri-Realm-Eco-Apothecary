@@ -9,7 +9,7 @@ export function SiteHeader() {
         <Link href="/catalog">Concept gallery</Link>
         <Link href="/about">Our approach</Link>
       </nav>
-      <Link href="/catalog" className="header-cta">Explore the ideas <span aria-hidden="true">↗</span></Link>
+      <Link href="/catalog" className="header-cta">Explore the ideas</Link>
     </div>
   </header>;
 }
